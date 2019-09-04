@@ -2,6 +2,16 @@
 var elem = document.getElementById('draw-shapes');
 var two = new Two({ width: 300, height: 500 }).appendTo(elem);
 
+function zeros(dimensions) {
+    var array = [];
+
+    for (var i = 0; i < dimensions[0]; ++i) {
+        array.push(dimensions.length == 1 ? 0 : zeros(dimensions.slice(1)));
+    }
+
+    return array;
+}
+
 var pipeWidth =70;
 var pipeXDistance = 300;
 var pipeYDistance = 200;
@@ -13,6 +23,9 @@ var birdXpos= 100;
 var hitboxRadius = 20;
 var minPipeHeight = 100;
 var maxPipeHeight = two.height - minPipeHeight - pipeYDistance;
+
+var Q = zeros([two.width, pipeYDistance+ 2*maxPipeHeight, 2]);
+
 class PipePair {
     constructor(posX) {
         this.initialize();
@@ -72,16 +85,29 @@ document.addEventListener('keyup', (e) => {
         firstPipe.posX-=speedX*dt;
         secondPipe.posX-=speedX*dt;
 
+        if (firstPipe.posX + pipeWidth/2 < birdXpos) {
+            [firstPipe, secondPipe] = [secondPipe, firstPipe];
+        }
+
+        var holePositionY = firstPipe.topPipeHeight + pipeYDistance/2;
+        var birdPosYRelativeToHole = birdYPos - holePositionY;
+        var QYIndex = Math.floor(birdPosYRelativeToHole + (pipeYDistance/2 + maxPipeHeight));
+
+        var holePositionX = firstPipe.posX + pipeWidth/2;
+        var birdPosXRelativeToHole = holePositionX - birdXpos;
+        var QXIndex = Math.floor(birdPosXRelativeToHole);
+
+        console.log(QXIndex + ", " + QYIndex);
         //Check for pipe collision
         if(firstPipe.checkColision(birdYPos) || secondPipe.checkColision(birdYPos)) {
             two.unbind('update', null);
         }
 
         //reset pipe when it's 2 pixels outside of the screen. needed because obejcts can't be remove from scene.
-        if(firstPipe.posX + pipeWidth + 2 < 0) {
-            firstPipe.posX+=two.width*2;
-            firstPipe.initialize();
-            [firstPipe, secondPipe] = [secondPipe, firstPipe];
+        if(secondPipe.posX + pipeWidth + 2 < 0) {
+            secondPipe.posX+=two.width*2;
+            secondPipe.initialize();
+            
         }
 
         //draw objects
