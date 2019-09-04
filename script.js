@@ -21,11 +21,11 @@ class PipePair {
 
     initialize() {
         this.height = Math.floor(Math.random() * (maxPipeHeight - minPipeHeight) + minPipeHeight); 
-        var pipeBottom = two.makeRectangle(pipeWidth/2, two.height - this.height/2, pipeWidth, this.height); 
+        this.pipeBottom = two.makeRectangle(pipeWidth/2, two.height - this.height/2, pipeWidth, this.height); 
         this.topPipeHeight = two.height -this.height - pipeYDistance;
-        var pipeTop = two.makeRectangle(pipeWidth/2, this.topPipeHeight/2, pipeWidth, this.topPipeHeight);
-        pipeBottom.fill = pipeTop.fill = '#2CB01A';
-        this.pipe = two.makeGroup(pipeBottom, pipeTop);
+        this.pipeTop = two.makeRectangle(pipeWidth/2, this.topPipeHeight/2, pipeWidth, this.topPipeHeight);
+        this.pipeBottom.fill = this.pipeTop.fill = '#2CB01A';
+        this.pipe = two.makeGroup(this.pipeBottom, this.pipeTop);
     }
 
     checkColision(birdYpos) {
@@ -37,6 +37,8 @@ class PipePair {
     }
 
     reset() {
+        this.pipeBottom.remove();
+        this.pipeTop.remove();
         two.remove(this.pipe);
         this.initialize();
     }
@@ -63,28 +65,29 @@ document.addEventListener('keyup', (e) => {
         var now = Date.now();
         dt = (now - lastRenderTime)/1000.0;
         lastRenderTime=now;
-        speedY-= gravity*dt;
 
+        //update speed and position of objects
+        speedY-= gravity*dt;
         birdYPos-=speedY*dt; 
         firstPipe.posX-=speedX*dt;
         secondPipe.posX-=speedX*dt;
 
-        if(!dead) {
-
-            if(firstPipe.checkColision(birdYPos) || secondPipe.checkColision(birdYPos)) {
-                dead = true;
-            }
-
-            if(firstPipe.posX + pipeWidth < 0) {
-                firstPipe.posX+=two.width*2;
-                //firstPipe.initialize();
-                [firstPipe, secondPipe] = [secondPipe, firstPipe];
-            }
-    
-            firstPipe.pipe.translation.set(firstPipe.posX, 0);
-            secondPipe.pipe.translation.set(secondPipe.posX, 0);
-            bird.translation.set(birdXpos,birdYPos)
+        //Check for pipe collision
+        if(firstPipe.checkColision(birdYPos) || secondPipe.checkColision(birdYPos)) {
+            two.unbind('update', null);
         }
+
+        //reset pipe when it's 2 pixels outside of the screen. needed because obejcts can't be remove from scene.
+        if(firstPipe.posX + pipeWidth + 2 < 0) {
+            firstPipe.posX+=two.width*2;
+            firstPipe.initialize();
+            [firstPipe, secondPipe] = [secondPipe, firstPipe];
+        }
+
+        //draw objects
+        firstPipe.pipe.translation.set(firstPipe.posX, 0);
+        secondPipe.pipe.translation.set(secondPipe.posX, 0);
+        bird.translation.set(birdXpos,birdYPos)
         }).play();
     }
     if (e.code == "Space") {
