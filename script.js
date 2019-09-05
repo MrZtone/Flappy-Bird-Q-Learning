@@ -2,6 +2,14 @@
 var elem = document.getElementById('draw-shapes');
 var two = new Two({ width: 300, height: 500 }).appendTo(elem);
 
+var learningRate = 2.0;
+var gamma = 0.85;
+var actionTimeLimit = 0.2;
+var actionTimer= 0;
+var explorationProbability = 0.2;
+
+const JUMP = 1, DO_NOTHING=0;
+
 function zeros(dimensions) {
     var array = [];
 
@@ -24,7 +32,7 @@ var hitboxRadius = 20;
 var minPipeHeight = 100;
 var maxPipeHeight = two.height - minPipeHeight - pipeYDistance;
 
-var Q = zeros([two.width, pipeYDistance+ 2*maxPipeHeight, 2]);
+Q = zeros([two.width, pipeYDistance+ 2*maxPipeHeight, 2]);
 
 class PipePair {
     constructor(posX) {
@@ -59,7 +67,7 @@ class PipePair {
 
 var bird = two.makeCircle(0, 0, hitboxRadius);
 bird.fill = '#FF8000';
-var birdYPos = 0;
+var birdYPos = two.height/2;
 
 var firstPipe = new PipePair(0);
 var secondPipe = new PipePair(pipeXDistance);
@@ -69,6 +77,18 @@ lastRenderTime = null;
 dt=0.0;
 dead = false;
 
+function resetGame() {
+    birdYPos= two.height/2;
+    bird = two.makeCircle(0, 0, hitboxRadius);
+    bird.fill = '#FF8000';
+    speedY=0;
+    firstPipe.reset();
+    firstPipe.posX=0;
+    secondPipe.reset();
+    secondPipe.posX=pipeXDistance;
+    two.play();
+}
+
 document.addEventListener('keyup', (e) => {
     if (e.code == "ArrowUp") {
         lastRenderTime = Date.now();
@@ -77,16 +97,18 @@ document.addEventListener('keyup', (e) => {
         two.bind('update', function(frameCount) {
         var now = Date.now();
         dt = (now - lastRenderTime)/1000.0;
+        actionTimer +=dt;
         lastRenderTime=now;
 
-        //update speed and position of objects
-        speedY-= gravity*dt;
-        birdYPos-=speedY*dt; 
-        firstPipe.posX-=speedX*dt;
-        secondPipe.posX-=speedX*dt;
-
+        //The pipe has passed the player, change focus to next pipe
         if (firstPipe.posX + pipeWidth/2 < birdXpos) {
             [firstPipe, secondPipe] = [secondPipe, firstPipe];
+        }
+
+        //reset pipe when it's 2 pixels outside of the screen. needed because obejcts can't be remove from scene.
+        if(secondPipe.posX + pipeWidth + 2 < 0) {
+            secondPipe.posX+=two.width*2;
+            secondPipe.initialize();
         }
 
         var holePositionY = firstPipe.topPipeHeight + pipeYDistance/2;
@@ -97,17 +119,58 @@ document.addEventListener('keyup', (e) => {
         var birdPosXRelativeToHole = holePositionX - birdXpos;
         var QXIndex = Math.floor(birdPosXRelativeToHole);
 
-        console.log(QXIndex + ", " + QYIndex);
-        //Check for pipe collision
-        if(firstPipe.checkColision(birdYPos) || secondPipe.checkColision(birdYPos)) {
-            two.unbind('update', null);
+        var actionValues = Q[QXIndex][QYIndex];
+        var action;
+
+        if (actionTimer > actionTimeLimit) {
+            if(Math.random() < explorationProbability) {
+                action = Math.round(Math.random());
+            }
+            else {
+                //1: jump, //0: do nothing
+                if(actionValues[1] > actionValues[0]) {
+                    speedY=500;
+                    action = JUMP;
+                }
+                else {
+                    action = DO_NOTHING;
+                }
+            }
         }
 
-        //reset pipe when it's 2 pixels outside of the screen. needed because obejcts can't be remove from scene.
-        if(secondPipe.posX + pipeWidth + 2 < 0) {
-            secondPipe.posX+=two.width*2;
-            secondPipe.initialize();
-            
+        //update speed and position of objects
+        speedY-= gravity*dt;
+        birdYPos-=speedY*dt;
+        birdYPos = Math.max(0,birdYPos); 
+        firstPipe.posX-=speedX*dt;
+        secondPipe.posX-=speedX*dt;
+
+        var reward = 1;
+        var dead = false;
+
+        //Check for pipe collision
+        if(firstPipe.checkColision(birdYPos) || secondPipe.checkColision(birdYPos) || birdYPos > two.height) {
+            reward =-1000;
+            dead = true;
+        }
+
+        if (actionTimer > actionTimeLimit) {
+            birdPosYRelativeToHole = birdYPos - holePositionY;
+            var QYIndexNewState = Math.floor(birdPosYRelativeToHole + (pipeYDistance/2 + maxPipeHeight));
+    
+            holePositionX = firstPipe.posX + pipeWidth/2;
+            birdPosXRelativeToHole = holePositionX - birdXpos;
+            var QXIndexNewState = Math.floor(birdPosXRelativeToHole);
+    
+            actionValues[action] = actionValues[action] + learningRate * (reward + gamma + Math.max(Q[QXIndexNewState][QYIndexNewState] - actionValues[action]));
+
+            actionTimer=0;
+        }
+        
+        if(dead) {
+            two.clear();
+            resetGame();
+            return;
         }
 
         //draw objects
