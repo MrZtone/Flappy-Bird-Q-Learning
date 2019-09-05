@@ -1,11 +1,12 @@
 // Make an instance of two and place it on the page.
 var elem = document.getElementById('draw-shapes');
 var two = new Two({ width: 300, height: 500 }).appendTo(elem);
+debug=false;
 
-var learningRate = 2.0;
+var learningRate = 1.0;
 var gamma = 0.85;
 var actionTimeLimit = 0.2;
-var actionTimer= 0;
+var actionTimer= actionTimeLimit;
 var explorationProbability = 0.2;
 
 const JUMP = 1, DO_NOTHING=0;
@@ -22,7 +23,7 @@ function zeros(dimensions) {
 
 var pipeWidth =70;
 var pipeXDistance = 300;
-var pipeYDistance = 200;
+var pipeYDistance = 250;
 
 var gravity = 1500;
 var speedX = 100;
@@ -31,8 +32,11 @@ var birdXpos= 100;
 var hitboxRadius = 20;
 var minPipeHeight = 100;
 var maxPipeHeight = two.height - minPipeHeight - pipeYDistance;
+var QsampleRateY = 30, QsampleRateX = 20;
+var QXDimension = Math.floor(two.width/QsampleRateX);
+var QYDimension = Math.floor((pipeYDistance+ 2*maxPipeHeight)/QsampleRateY);
 
-Q = zeros([two.width, pipeYDistance+ 2*maxPipeHeight, 2]);
+Q = zeros([QXDimension, QYDimension, 2]);
 
 class PipePair {
     constructor(posX) {
@@ -76,12 +80,19 @@ bird.noStroke();
 lastRenderTime = null;
 dt=0.0;
 dead = false;
+var QYIndex, QXIndex, action, reward;
+var firstAction = true;
+var dead =false;
 
 function resetGame() {
     birdYPos= two.height/2;
     bird = two.makeCircle(0, 0, hitboxRadius);
     bird.fill = '#FF8000';
     speedY=0;
+    reward=0;
+    actionTimer=actionTimeLimit;
+    firstAction =true;
+    dead=false;
     firstPipe.reset();
     firstPipe.posX=0;
     secondPipe.reset();
@@ -101,34 +112,47 @@ document.addEventListener('keyup', (e) => {
         lastRenderTime=now;
 
         //The pipe has passed the player, change focus to next pipe
-        if (firstPipe.posX + pipeWidth/2 < birdXpos) {
+        if (firstPipe.posX + pipeWidth < birdXpos) {
             [firstPipe, secondPipe] = [secondPipe, firstPipe];
         }
 
-        //reset pipe when it's 2 pixels outside of the screen. needed because obejcts can't be remove from scene.
-        if(secondPipe.posX + pipeWidth + 2 < 0) {
-            secondPipe.posX+=two.width*2;
-            secondPipe.initialize();
-        }
+        if (actionTimer >= actionTimeLimit || dead) {
 
-        var holePositionY = firstPipe.topPipeHeight + pipeYDistance/2;
-        var birdPosYRelativeToHole = birdYPos - holePositionY;
-        var QYIndex = Math.floor(birdPosYRelativeToHole + (pipeYDistance/2 + maxPipeHeight));
+            var holePositionY = firstPipe.topPipeHeight + pipeYDistance/2;
+            var birdPosYRelativeToHole = birdYPos - holePositionY;
+            var holePositionX = firstPipe.posX + pipeWidth/2;
+            var birdPosXRelativeToHole = holePositionX - birdXpos;
 
-        var holePositionX = firstPipe.posX + pipeWidth/2;
-        var birdPosXRelativeToHole = holePositionX - birdXpos;
-        var QXIndex = Math.floor(birdPosXRelativeToHole);
+            if(!firstAction) {
+                var QYIndexNewState = Math.floor((birdPosYRelativeToHole + (pipeYDistance/2 + maxPipeHeight))/QsampleRateY);
+                QYIndexNewState = Math.min(QYDimension-1, Math.max(0, QYIndexNewState));
+        
+                var QXIndexNewState = Math.floor(birdPosXRelativeToHole/QsampleRateX);
+                QXIndexNewState = Math.min(QXDimension-1, Math.max(0, QXIndexNewState));
 
-        var actionValues = Q[QXIndex][QYIndex];
-        var action;
+                if(debug) {
+                    console.log(Q[QXIndex][QYIndex][action] + learningRate * (reward + gamma + Math.max(Q[QXIndexNewState][QYIndexNewState][DO_NOTHING], Q[QXIndexNewState][QYIndexNewState][JUMP]) - Q[QXIndex][QYIndex][action]));
+                    if(dead)
+                        console.log("dead");
+                }
 
-        if (actionTimer > actionTimeLimit) {
-            if(Math.random() < explorationProbability) {
+                Q[QXIndex][QYIndex][action] = Q[QXIndex][QYIndex][action] + learningRate * (reward + gamma + Math.max(Q[QXIndexNewState][QYIndexNewState][DO_NOTHING], Q[QXIndexNewState][QYIndexNewState][JUMP]) - Q[QXIndex][QYIndex][action]);
+            }
+            firstAction = false;
+            
+            QYIndex = Math.floor((birdPosYRelativeToHole + (pipeYDistance/2 + maxPipeHeight))/QsampleRateY);
+            QYIndex = Math.min(QYDimension-1, Math.max(0, QYIndex));
+
+            QXIndex = Math.floor(birdPosXRelativeToHole/QsampleRateX);
+            QXIndex = Math.min(QXDimension-1, Math.max(0, QXIndex));
+
+            var actionValues = Q[QXIndex][QYIndex];
+
+            if(Math.random() < explorationProbability || (actionValues[1] == actionValues[0])) {
                 action = Math.round(Math.random());
             }
             else {
-                //1: jump, //0: do nothing
-                if(actionValues[1] > actionValues[0]) {
+                if(actionValues[JUMP] > actionValues[DO_NOTHING]) {
                     speedY=500;
                     action = JUMP;
                 }
@@ -136,6 +160,15 @@ document.addEventListener('keyup', (e) => {
                     action = DO_NOTHING;
                 }
             }
+
+            actionTimer=0;
+            reward =0;
+        }
+
+        if(dead) {
+            two.clear();
+            resetGame();
+            return;
         }
 
         //update speed and position of objects
@@ -145,32 +178,19 @@ document.addEventListener('keyup', (e) => {
         firstPipe.posX-=speedX*dt;
         secondPipe.posX-=speedX*dt;
 
-        var reward = 1;
-        var dead = false;
-
-        //Check for pipe collision
+        //Check for collision
         if(firstPipe.checkColision(birdYPos) || secondPipe.checkColision(birdYPos) || birdYPos > two.height) {
-            reward =-1000;
+            reward -=1000;
             dead = true;
         }
-
-        if (actionTimer > actionTimeLimit) {
-            birdPosYRelativeToHole = birdYPos - holePositionY;
-            var QYIndexNewState = Math.floor(birdPosYRelativeToHole + (pipeYDistance/2 + maxPipeHeight));
-    
-            holePositionX = firstPipe.posX + pipeWidth/2;
-            birdPosXRelativeToHole = holePositionX - birdXpos;
-            var QXIndexNewState = Math.floor(birdPosXRelativeToHole);
-    
-            actionValues[action] = actionValues[action] + learningRate * (reward + gamma + Math.max(Q[QXIndexNewState][QYIndexNewState] - actionValues[action]));
-
-            actionTimer=0;
+        else {
+            reward+=10;
         }
-        
-        if(dead) {
-            two.clear();
-            resetGame();
-            return;
+
+        //reset pipe when it's 2 pixels outside of the screen. needed because obejcts can't be remove from scene.
+        if(secondPipe.posX + pipeWidth + 2 < 0) {
+            secondPipe.posX+=two.width*2;
+            secondPipe.initialize();
         }
 
         //draw objects
