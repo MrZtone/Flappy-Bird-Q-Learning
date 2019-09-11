@@ -4,11 +4,11 @@ const JUMP = 1, DO_NOTHING=0;
 var numOfRuns = 0;
 var score = 0;
 
-var learningRate = 0.5;
-var gamma = 0.7;
-var actionTimeLimit = 0.6;
+var learningRate = 0.9;
+var gamma = 0.8;
+var actionTimeLimit = 0.2;
 var actionTimer= actionTimeLimit;
-var explorationProbability = 0.2;
+var explorationProbability = 0.3;
 
 var gravity = 1500;
 var QsampleRateY = 10, QsampleRateX = 10;
@@ -79,7 +79,7 @@ document.addEventListener('keyup', (e) => {
             QYIndexNewState = Math.min(QYDimension-1, Math.max(0, QYIndexNewState));
 
             if(!firstAction) {
-                Q[QXIndex][QYIndex][action] = Q[QXIndex][QYIndex][action] + learningRate * (reward + gamma + Math.max(Q[QXIndexNewState][QYIndexNewState][DO_NOTHING], Q[QXIndexNewState][QYIndexNewState][JUMP]) - Q[QXIndex][QYIndex][action]);
+                Q[QXIndex][QYIndex][action] = Q[QXIndex][QYIndex][action] + learningRate * (reward + gamma * Math.max(Q[QXIndexNewState][QYIndexNewState][DO_NOTHING], Q[QXIndexNewState][QYIndexNewState][JUMP]) - Q[QXIndex][QYIndex][action]);
             }
             
             QYIndex = QYIndexNewState;
@@ -125,13 +125,9 @@ document.addEventListener('keyup', (e) => {
         secondPipe.move(dt);
 
         //Check for collision
-        if(firstPipe.checkCollision(bird) || secondPipe.checkCollision(bird)) {
+        if(firstPipe.checkCollision(bird) || secondPipe.checkCollision(bird) || bird.posY + Player.radius > two.height) {
             reward -=1000;
             bird.dead = true;
-        }
-        else if(bird.posY > two.height) {
-            reward -=200;
-            bird.dead=true;
         }
 
         //reset pipe when it's 2 pixels outside of the screen. needed because obejcts can't be remove from scene.
