@@ -8,7 +8,7 @@ var learningRate = 0.9;
 var gamma = 0.8;
 var actionTimeLimit = 0.2;
 var actionTimer= actionTimeLimit;
-var explorationProbability = 0.3;
+var explorationProbability = 0.5;
 
 var gravity = 1500;
 var QsampleRateY = 10, QsampleRateX = 10;
@@ -112,7 +112,7 @@ document.addEventListener('keyup', (e) => {
             two.clear();
             resetGame();
             numOfRuns++;
-            if(numOfRuns%25 == 0)
+            if(numOfRuns%40 == 0)
                 explorationProbability *= 0.9;
 
             return;
